@@ -1738,16 +1738,13 @@ public abstract class World implements IBlockAccess {
 	public void b(BlockPosition blockposition, Block block, int i, int j) {
 	}
 
-	// WindSpigot - move this 
-	private Entity entity;
-	
 	public void tickEntities() {
 		boolean tickOverload = false; // WindSpigot
 		this.methodProfiler.a("entities");
 		this.methodProfiler.a("global");
 
 		int i;
-		//Entity entity;
+		Entity entity;
 		CrashReport crashreport;
 		CrashReportSystemDetails crashreportsystemdetails;
 
@@ -1858,19 +1855,21 @@ public abstract class World implements IBlockAccess {
 			this.methodProfiler.b();
 			this.methodProfiler.a("remove");
 			
+			final Entity finalEntity = entity;
+
 			// WindSpigot start - async entities
 			AsyncUtil.runSyncNextTick(() -> {
-				if (entity.dead) {
-					//j = entity.ae;
-					//k = entity.ag;
-					if (entity.ad && this.isChunkLoaded(entity.ae, entity.ag, true)) {
-						this.getChunkAt(entity.ae, entity.ag).b(entity);
+				if (finalEntity.dead) {
+					//j = finalEntity.ae;
+					//k = finalEntity.ag;
+					if (finalEntity.ad && this.isChunkLoaded(finalEntity.ae, finalEntity.ag, true)) {
+						this.getChunkAt(finalEntity.ae, finalEntity.ag).b(finalEntity);
 					}
 
 					guardEntityList = false; // Spigot
 					this.entityList.remove(this.tickPosition--); // CraftBukkit - Use field for loop variable
 					guardEntityList = true; // Spigot
-					this.b(entity);
+					this.b(finalEntity);
 				}
 			});
 			// WindSpigot end
