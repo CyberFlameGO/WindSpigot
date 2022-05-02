@@ -33,6 +33,7 @@ import com.google.common.collect.Sets;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
 // PaperSpigot end
 
+import ga.windpvp.windspigot.async.AsyncUtil;
 // WindSpigot start 
 import ga.windpvp.windspigot.config.WindSpigotConfig;
 import ga.windpvp.windspigot.random.FastRandom;
@@ -1733,12 +1734,15 @@ public abstract class World implements IBlockAccess {
 	public void b(BlockPosition blockposition, Block block, int i, int j) {
 	}
 
+	// WindSpigot - move this 
+	private Entity entity;
+	
 	public void tickEntities() {
 		this.methodProfiler.a("entities");
 		this.methodProfiler.a("global");
 
 		int i;
-		Entity entity;
+		//Entity entity;
 		CrashReport crashreport;
 		CrashReportSystemDetails crashreportsystemdetails;
 
@@ -1821,7 +1825,7 @@ public abstract class World implements IBlockAccess {
 			if (!entity.dead) {
 				try {
 					entity.tickTimer.startTiming(); // Spigot
-					this.g(entity);
+					this.g(entity, true);
 					entity.tickTimer.stopTiming(); // Spigot
 				} catch (Throwable throwable1) {
 					// PaperSpigot start - Prevent tile entity and entity crashes
@@ -1837,19 +1841,24 @@ public abstract class World implements IBlockAccess {
 
 			this.methodProfiler.b();
 			this.methodProfiler.a("remove");
-			if (entity.dead) {
-				j = entity.ae;
-				k = entity.ag;
-				if (entity.ad && this.isChunkLoaded(j, k, true)) {
-					this.getChunkAt(j, k).b(entity);
+			
+			// WindSpigot start - async entities
+			AsyncUtil.runSyncNextTick(() -> {
+				if (entity.dead) {
+					//j = entity.ae;
+					//k = entity.ag;
+					if (entity.ad && this.isChunkLoaded(entity.ae, entity.ag, true)) {
+						this.getChunkAt(entity.ae, entity.ag).b(entity);
+					}
+
+					guardEntityList = false; // Spigot
+					this.entityList.remove(this.tickPosition--); // CraftBukkit - Use field for loop variable
+					guardEntityList = true; // Spigot
+					this.b(entity);
 				}
-
-				guardEntityList = false; // Spigot
-				this.entityList.remove(this.tickPosition--); // CraftBukkit - Use field for loop variable
-				guardEntityList = true; // Spigot
-				this.b(entity);
-			}
-
+			});
+			// WindSpigot end
+			
 			this.methodProfiler.b();
 		}
 		guardEntityList = false; // Spigot
@@ -1997,7 +2006,15 @@ public abstract class World implements IBlockAccess {
 	}
 
 	public void g(Entity entity) {
-		this.entityJoinedWorld(entity, true);
+		g(entity, false);
+	}
+	
+	public void g(Entity entity, boolean async) {
+		if (async) {
+			AsyncUtil.run(() ->	this.entityJoinedWorld(entity, true));
+		} else {
+			entityJoinedWorld(entity, true);
+		}
 	}
 
 	public void entityJoinedWorld(Entity entity, boolean flag) {
