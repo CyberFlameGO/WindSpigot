@@ -10,6 +10,7 @@ import java.util.Random;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.Callable;
+import java.util.concurrent.CompletableFuture;
 // PaperSpigot start
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -1818,11 +1819,13 @@ public abstract class World implements IBlockAccess {
 				entity.vehicle = null;
 			}
 
+			CompletableFuture<Entity> processedEntity = null; 
+			
 			this.methodProfiler.a("tick");
 			if (!entity.dead) {
 				try {
 					entity.tickTimer.startTiming(); // Spigot
-					this.g(entity, true);
+					processedEntity = this.g(entity, true);
 					entity.tickTimer.stopTiming(); // Spigot
 				} catch (Throwable throwable1) {
 					// PaperSpigot start - Prevent tile entity and entity crashes
@@ -1839,23 +1842,21 @@ public abstract class World implements IBlockAccess {
 			this.methodProfiler.b();
 			this.methodProfiler.a("remove");
 			
-			final Entity finalEntity = entity;
-
 			// WindSpigot start - async entities
-			AsyncUtil.runSyncNextTick(() -> {
-				if (finalEntity.dead) {
-					//j = finalEntity.ae;
-					//k = finalEntity.ag;
-					if (finalEntity.ad && this.isChunkLoaded(finalEntity.ae, finalEntity.ag, true)) {
-						this.getChunkAt(finalEntity.ae, finalEntity.ag).b(finalEntity);
-					}
+			if (processedEntity != null) {
+				processedEntity.thenAccept(finalProcessedEntity -> {
+					if (finalProcessedEntity.dead) {
+						if (finalProcessedEntity.ad && this.isChunkLoaded(finalProcessedEntity.ae, finalProcessedEntity.ag, true)) {
+							this.getChunkAt(finalProcessedEntity.ae, finalProcessedEntity.ag).b(finalProcessedEntity);
+						}
 
-					guardEntityList = false; // Spigot
-					this.entityList.remove(this.tickPosition--); // CraftBukkit - Use field for loop variable
-					guardEntityList = true; // Spigot
-					this.b(finalEntity);
-				}
-			});
+						guardEntityList = false; // Spigot
+						this.entityList.remove(this.tickPosition--); // CraftBukkit - Use field for loop variable
+						guardEntityList = true; // Spigot
+						this.b(finalProcessedEntity);
+					}
+				});
+			}
 			// WindSpigot end
 			
 			this.methodProfiler.b();
@@ -2004,16 +2005,16 @@ public abstract class World implements IBlockAccess {
 
 	}
 
-	public void g(Entity entity) {
-		g(entity, false);
+	public CompletableFuture<Entity> g(Entity entity) {
+		return g(entity, false);
 	}
 	
-	public void g(Entity entity, boolean async) {
-		if (async) {
-			AsyncUtil.run(() ->	this.entityJoinedWorld(entity, true));
-		} else {
+	public CompletableFuture<Entity> g(Entity entity, boolean async) {
+		//AsyncUtil.run(() ->	this.entityJoinedWorld(entity, true));
+		return CompletableFuture.supplyAsync(() -> {
 			entityJoinedWorld(entity, true);
-		}
+			return entity;
+		});
 	}
 
 	public void entityJoinedWorld(Entity entity, boolean flag) {
