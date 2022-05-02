@@ -14,6 +14,7 @@ import java.util.concurrent.CompletableFuture;
 // PaperSpigot start
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 import org.bukkit.Bukkit;
 import org.bukkit.block.BlockState;
@@ -54,18 +55,37 @@ public abstract class World implements IBlockAccess {
 	protected boolean e;
 	// Spigot start - guard entity list from removals
 	public final List<Entity> entityList = new ObjectArrayList<Entity>() { // WindSpigot - ArrayList -> ObjectArrayList 
+		
+		// WindSpigot start - synchronize entity list
+		private final ReentrantReadWriteLock lock = new ReentrantReadWriteLock();
+		
 		@Override
 		public Entity remove(int index) {
 			guard();
-			return super.remove(index);
+			lock.writeLock().lock();
+			Entity removed = super.remove(index);
+			lock.writeLock().unlock();
+			return removed;
 		}
 
 		@Override
 		public boolean remove(Object o) {
 			guard();
-			return super.remove(o);
+			lock.writeLock().lock();
+			boolean removed = super.remove(o);
+			lock.writeLock().unlock();
+			return removed;
 		}
-
+		
+		@Override
+		public Entity get(final int index) {
+			lock.readLock().lock();
+			Entity entity = super.get(index);
+			lock.readLock().unlock();
+			return entity;
+		}
+		// WindSpigot end
+		
 		private void guard() {
 			if (guardEntityList) {
 				throw new java.util.ConcurrentModificationException();
