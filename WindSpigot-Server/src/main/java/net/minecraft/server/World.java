@@ -36,6 +36,7 @@ import com.google.common.util.concurrent.ThreadFactoryBuilder;
 // PaperSpigot end
 
 import ga.windpvp.windspigot.async.AsyncUtil;
+import ga.windpvp.windspigot.async.ResettableLatch;
 // WindSpigot start 
 import ga.windpvp.windspigot.config.WindSpigotConfig;
 import ga.windpvp.windspigot.entity.EntityTickLimiter;
@@ -137,9 +138,11 @@ public abstract class World implements IBlockAccess {
 	private final WorldBorder N;
 	int[] H;
 	
-	private final Object modificationLock = new Object(); // WindSpigot
-
-	protected boolean lastTickOverload = false; // WindSpigot
+	// WindSpigot start
+	private final Object modificationLock = new Object(); 
+	private ResettableLatch latch = new ResettableLatch();
+	protected boolean lastTickOverload = false; 
+	// WindSpigot end
 	
 	// CraftBukkit start Added the following
 	private final CraftWorld world;
@@ -1841,11 +1844,11 @@ public abstract class World implements IBlockAccess {
 		// CraftBukkit start - Use field for loop variable
 		co.aikar.timings.TimingHistory.entityTicks += this.entityList.size(); // Spigot
 		int entitiesThisCycle = 0;
-		// PaperSpigot start - Disable tick limiters
-		// if (tickPosition < 0) tickPosition = 0;
+
+		latch.reset(entityList.size()); // WindSpigot - async entities
+		
 		entityLimiter.initTick(); // WindSpigot - re-implement Spigot's entity max tick time, but only for certain entities
 		for (tickPosition = 0; tickPosition < entityList.size(); tickPosition++) {
-			// PaperSpigot end
 			tickPosition = (tickPosition < entityList.size()) ? tickPosition : 0;
 			entity = this.entityList.get(this.tickPosition);
 			// CraftBukkit end
@@ -1854,6 +1857,7 @@ public abstract class World implements IBlockAccess {
 			if (!entityLimiter.shouldContinue()) {
 				tickOverload = true; // indicate that the last tick overloaded the server
 				if (((EntityTickLimiter) entityLimiter).canSkip(entity)) {
+					latch.decrement();
 					continue;
 				}
 			} 
@@ -1861,6 +1865,7 @@ public abstract class World implements IBlockAccess {
 			
 			if (entity.vehicle != null) {
 				if (!entity.vehicle.dead && entity.vehicle.passenger == entity) {
+					latch.decrement(); // WindSpigot
 					continue;
 				}
 
@@ -1884,10 +1889,13 @@ public abstract class World implements IBlockAccess {
 					continue;
 					// PaperSpigot end
 				}
+			} else {
+				latch.decrement(); // WindSpigot
 			}
 
 			this.methodProfiler.b();
 			this.methodProfiler.a("remove");
+			// WindSpigot TODO: properly check if an entity is dead after it has been ticked
 			if (entity.dead) {
 				j = entity.ae;
 				k = entity.ag;
@@ -1903,6 +1911,13 @@ public abstract class World implements IBlockAccess {
 			
 			this.methodProfiler.b();
 		}
+		// WindSpigot start - async entities
+		try {
+			latch.waitTillZero();
+		} catch (InterruptedException e1) {
+			e1.printStackTrace();
+		}
+		// WindSpigot end
 		guardEntityList = false; // Spigot
 
 		timings.entityTick.stopTiming(); // Spigot
@@ -2049,16 +2064,20 @@ public abstract class World implements IBlockAccess {
 
 	}
 
-	public CompletableFuture<Entity> g(Entity entity) {
-		return g(entity, false);
+	public void g(Entity entity) {
+		g(entity, false);
 	}
 	
-	public CompletableFuture<Entity> g(Entity entity, boolean async) {
+	public void g(Entity entity, boolean async) {
 		//AsyncUtil.run(() ->	this.entityJoinedWorld(entity, true));
-		return CompletableFuture.supplyAsync(() -> {
+		if (async) {
+			CompletableFuture.runAsync(() -> {
+				entityJoinedWorld(entity, true);
+				latch.decrement();
+			});
+		} else {
 			entityJoinedWorld(entity, true);
-			return entity;
-		});
+		}
 	}
 
 	public void entityJoinedWorld(Entity entity, boolean flag) {
