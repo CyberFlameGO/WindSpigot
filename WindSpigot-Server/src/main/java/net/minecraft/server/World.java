@@ -136,6 +136,8 @@ public abstract class World implements IBlockAccess {
 	private boolean M;
 	private final WorldBorder N;
 	int[] H;
+	
+	private final Object modificationLock = new Object(); // WindSpigot
 
 	protected boolean lastTickOverload = false; // WindSpigot
 	
@@ -1288,13 +1290,16 @@ public abstract class World implements IBlockAccess {
 			return null;
 		}
 	}
-
+	
+	// WindSpigot - synchronize
 	public void makeSound(final Entity entity, final String s, final float f, final float f1) {
-		for (final IWorldAccess iWorldAccess : this.u) {
-			if (entity instanceof EntityHuman) {
-				iWorldAccess.a((EntityHuman) entity, s, entity.locX, entity.locY, entity.locZ, f, f1);
-			} else {
-				iWorldAccess.a(s, entity.locX, entity.locY, entity.locZ, f, f1);
+		synchronized (modificationLock) {
+			for (final IWorldAccess iWorldAccess : this.u) {
+				if (entity instanceof EntityHuman) {
+					iWorldAccess.a((EntityHuman) entity, s, entity.locX, entity.locY, entity.locZ, f, f1);
+				} else {
+					iWorldAccess.a(s, entity.locX, entity.locY, entity.locZ, f, f1);
+				}
 			}
 		}
 	}
@@ -1306,11 +1311,13 @@ public abstract class World implements IBlockAccess {
 
 	}
 
-	public void makeSound(double d0, double d1, double d2, String s, float f, float f1) {
-		for (IWorldAccess iWorldAccess : this.u) {
-			iWorldAccess.a(s, d0, d1, d2, f, f1);
+	// WindSpigot - synchronize
+	public synchronized void makeSound(double d0, double d1, double d2, String s, float f, float f1) {
+		synchronized (modificationLock) {
+			for (IWorldAccess iWorldAccess : this.u) {
+				iWorldAccess.a(s, d0, d1, d2, f, f1);
+			}
 		}
-
 	}
 
 	public void a(double d0, double d1, double d2, String s, float f, float f1, boolean flag) {
@@ -1323,9 +1330,12 @@ public abstract class World implements IBlockAccess {
 
 	}
 
+	// WindSpigot - synchronize
 	public void addParticle(EnumParticle enumparticle, double d0, double d1, double d2, double d3, double d4, double d5,
 			int... aint) {
-		this.a(enumparticle.c(), enumparticle.e(), d0, d1, d2, d3, d4, d5, aint);
+		synchronized (modificationLock) {
+			this.a(enumparticle.c(), enumparticle.e(), d0, d1, d2, d3, d4, d5, aint);
+		}
 	}
 
 	private void a(int i, boolean flag, double d0, double d1, double d2, double d3, double d4, double d5, int... aint) {
@@ -1345,104 +1355,107 @@ public abstract class World implements IBlockAccess {
 		return addEntity(entity, SpawnReason.DEFAULT);
 	}
 
+	// WindSpigot - synchronize
 	public boolean addEntity(Entity entity, SpawnReason spawnReason) { // Changed signature, added SpawnReason
-		org.spigotmc.AsyncCatcher.catchOp("entity add"); // Spigot
-		if (entity == null) {
-			return false;
-		}
-		// CraftBukkit end
-		int i = MathHelper.floor(entity.locX / 16.0D);
-		int j = MathHelper.floor(entity.locZ / 16.0D);
-		boolean flag = entity.attachedToPlayer;
-
-		if (entity instanceof EntityHuman) {
-			flag = true;
-		}
-
-		// CraftBukkit start
-		org.bukkit.event.Cancellable event = null;
-		if (entity instanceof EntityLiving && !(entity instanceof EntityPlayer)) {
-			boolean isAnimal = entity instanceof EntityAnimal || entity instanceof EntityWaterAnimal
-					|| entity instanceof EntityGolem;
-			boolean isMonster = entity instanceof EntityMonster || entity instanceof EntityGhast
-					|| entity instanceof EntitySlime;
-
-			if (spawnReason != SpawnReason.CUSTOM) {
-				if (isAnimal && !allowAnimals || isMonster && !allowMonsters) {
-					entity.dead = true;
-					return false;
-				}
+		synchronized (modificationLock) {
+			org.spigotmc.AsyncCatcher.catchOp("entity add"); // Spigot
+			if (entity == null) {
+				return false;
 			}
-
-			event = CraftEventFactory.callCreatureSpawnEvent((EntityLiving) entity, spawnReason);
-		} else if (entity instanceof EntityItem) {
-			event = CraftEventFactory.callItemSpawnEvent((EntityItem) entity);
-		} else if (entity.getBukkitEntity() instanceof org.bukkit.entity.Projectile) {	
-			// Not all projectiles extend EntityProjectile, so check for Bukkit interface
-			// instead
-			event = CraftEventFactory.callProjectileLaunchEvent(entity);
-		}
-		// Spigot start
-		else if (entity instanceof EntityExperienceOrb) {
-			EntityExperienceOrb xp = (EntityExperienceOrb) entity;
-			double radius = spigotConfig.expMerge;
-			if (radius > 0) {
-				List<Entity> entities = this.getEntities(entity, entity.getBoundingBox().grow(radius, radius, radius));
-				for (Entity e : entities) {
-					if (e instanceof EntityExperienceOrb) {
-						EntityExperienceOrb loopItem = (EntityExperienceOrb) e;
-						if (!loopItem.dead) {
-							xp.value += loopItem.value;
-							loopItem.die();
+			// CraftBukkit end
+			int i = MathHelper.floor(entity.locX / 16.0D);
+			int j = MathHelper.floor(entity.locZ / 16.0D);
+			boolean flag = entity.attachedToPlayer;
+	
+			if (entity instanceof EntityHuman) {
+				flag = true;
+			}
+	
+			// CraftBukkit start
+			org.bukkit.event.Cancellable event = null;
+			if (entity instanceof EntityLiving && !(entity instanceof EntityPlayer)) {
+				boolean isAnimal = entity instanceof EntityAnimal || entity instanceof EntityWaterAnimal
+						|| entity instanceof EntityGolem;
+				boolean isMonster = entity instanceof EntityMonster || entity instanceof EntityGhast
+						|| entity instanceof EntitySlime;
+	
+				if (spawnReason != SpawnReason.CUSTOM) {
+					if (isAnimal && !allowAnimals || isMonster && !allowMonsters) {
+						entity.dead = true;
+						return false;
+					}
+				}
+	
+				event = CraftEventFactory.callCreatureSpawnEvent((EntityLiving) entity, spawnReason);
+			} else if (entity instanceof EntityItem) {
+				event = CraftEventFactory.callItemSpawnEvent((EntityItem) entity);
+			} else if (entity.getBukkitEntity() instanceof org.bukkit.entity.Projectile) {	
+				// Not all projectiles extend EntityProjectile, so check for Bukkit interface
+				// instead
+				event = CraftEventFactory.callProjectileLaunchEvent(entity);
+			}
+			// Spigot start
+			else if (entity instanceof EntityExperienceOrb) {
+				EntityExperienceOrb xp = (EntityExperienceOrb) entity;
+				double radius = spigotConfig.expMerge;
+				if (radius > 0) {
+					List<Entity> entities = this.getEntities(entity, entity.getBoundingBox().grow(radius, radius, radius));
+					for (Entity e : entities) {
+						if (e instanceof EntityExperienceOrb) {
+							EntityExperienceOrb loopItem = (EntityExperienceOrb) e;
+							if (!loopItem.dead) {
+								xp.value += loopItem.value;
+								loopItem.die();
+							}
 						}
 					}
 				}
+			} // Spigot end
+	
+			if (event != null && (event.isCancelled() || entity.dead)) {
+				entity.dead = true;
+				return false;
 			}
-		} // Spigot end
-
-		if (event != null && (event.isCancelled() || entity.dead)) {
-			entity.dead = true;
-			return false;
-		}
-		// CraftBukkit end
-
-		if (!flag && !this.isChunkLoaded(i, j, true)) {
-			entity.dead = true;
-			return false;
-		} else {
-			if (entity instanceof EntityHuman) {
-				EntityHuman entityhuman = (EntityHuman) entity;
-
-				this.players.add(entityhuman);
-				this.playerMap.add((EntityPlayer) entityhuman);
-				this.everyoneSleeping();
-			}
-
-			this.getChunkAt(i, j).a(entity);
-			if (entity.dead) {
-				return false; // Paper - don't add dead entities, chunk registration may of killed it
-			}
-			this.entityList.add(entity);
-			this.a(entity);
-			
-			// WindSpigot start - configurable entity hit delay
-			if (entity instanceof EntityLiving) {
-				((EntityLiving) entity).maxNoDamageTicks = WindSpigotConfig.hitDelay;
-			}
-			// WindSpigot end
-			
-			// WindSpigot start - configurable potion speeds
-			if (entity instanceof EntityPotion) {
-				// Subtract the speed from the y value of the velocity, the potion will drop faster and will therefore splash faster
-				entity.motY -= WindSpigotConfig.potionSpeed;	
-				
-				// Mark velocity as changed only if potion speed is not default
-				if (!(WindSpigotConfig.potionSpeed == 0)) {
-					entity.velocityChanged = true;
+			// CraftBukkit end
+	
+			if (!flag && !this.isChunkLoaded(i, j, true)) {
+				entity.dead = true;
+				return false;
+			} else {
+				if (entity instanceof EntityHuman) {
+					EntityHuman entityhuman = (EntityHuman) entity;
+	
+					this.players.add(entityhuman);
+					this.playerMap.add((EntityPlayer) entityhuman);
+					this.everyoneSleeping();
 				}
+	
+				this.getChunkAt(i, j).a(entity);
+				if (entity.dead) {
+					return false; // Paper - don't add dead entities, chunk registration may of killed it
+				}
+				this.entityList.add(entity);
+				this.a(entity);
+				
+				// WindSpigot start - configurable entity hit delay
+				if (entity instanceof EntityLiving) {
+					((EntityLiving) entity).maxNoDamageTicks = WindSpigotConfig.hitDelay;
+				}
+				// WindSpigot end
+				
+				// WindSpigot start - configurable potion speeds
+				if (entity instanceof EntityPotion) {
+					// Subtract the speed from the y value of the velocity, the potion will drop faster and will therefore splash faster
+					entity.motY -= WindSpigotConfig.potionSpeed;	
+					
+					// Mark velocity as changed only if potion speed is not default
+					if (!(WindSpigotConfig.potionSpeed == 0)) {
+						entity.velocityChanged = true;
+					}
+				}
+				// WindSpigot end
+				return true;
 			}
-			// WindSpigot end
-			return true;
 		}
 	}
 
