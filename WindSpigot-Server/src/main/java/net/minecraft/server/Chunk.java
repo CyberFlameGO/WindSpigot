@@ -789,7 +789,8 @@ public class Chunk {
 		this.done = done;
 	}
 
-	public void a(Entity entity) {
+	// WindSpigot - synchronize
+	public synchronized void a(Entity entity) {
 		this.r = true;
 		int i = MathHelper.floor(entity.locX / 16.0D);
 		int j = MathHelper.floor(entity.locZ / 16.0D);
@@ -852,7 +853,8 @@ public class Chunk {
 		this.a(entity, entity.af);
 	}
 
-	public void a(Entity entity, int i) {
+	// WindSpigot - synchronize
+	public synchronized void a(Entity entity, int i) {
 		if (i < 0) {
 			i = 0;
 		}
